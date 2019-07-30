@@ -12,7 +12,6 @@ variables:
 
   # k8s cluster configuration variables
   NAMESPACE: "delivery"
-  PROVIDER: "aws"
 
 # configuring pre-requisites required during pipeline execution
 before_script:
@@ -23,7 +22,6 @@ before_script:
   - echo $INSTALL_PVC
 
   - echo $NAMESPACE
-  - echo $PROVIDER
   
   # Configuring kubernetes cluster access
   - echo "configuration kubernetes access in pipeline"
@@ -44,7 +42,7 @@ deploy:
 
     - echo "Deploying stack on kubernetes cluster"
     - if [ -z "$NAMESPACE" ]; then \
-    -       make $TARGET PROVIDER_NAME=$PROVIDER INSTALL_PVC=$INSTALL_PVC; \
+    -       make $TARGET INSTALL_PVC=$INSTALL_PVC; \
     - else \
-    -       make $TARGET NAMESPACE=$NAMESPACE PROVIDER_NAME=$PROVIDER INSTALL_PVC=$INSTALL_PVC; \      
+    -       make $TARGET NAMESPACE=$NAMESPACE INSTALL_PVC=$INSTALL_PVC; \      
     - fi

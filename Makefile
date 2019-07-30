@@ -2,7 +2,6 @@
 SHELL := /bin/bash
 NAMESPACE ?= delivery
 FOLDER_NAME ?= manifests
-PROVIDER_NAME ?= aws
 INSTALL_PVC ?= false
 
 install:

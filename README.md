@@ -26,13 +26,12 @@ kubectl apply -f . -n delivery
 
 
 # Variables to replace
-REPLACE_PROVIDER: azure,aws,ibm etc.
 REPLACE_DOMAIN_NAME: Domain name to expose applications e.g stakater.com
 REPLACE_ADMIN_ACCOUNT: base64 string for admin account json
 REPLACE_CLUSTER_ACCOUNT: base64 string for cluster account json
-REPLACE_HOSTNAME: Azure=`jenkins-REPLACE_NAMESPACE.REPLACE_DOMAIN_NAME` AWS=`jenkins.REPLACE_NAMESPACE.REPLACE_DOMAIN_NAME`
+REPLACE_HOSTNAME: e.g. `jenkins.REPLACE_NAMESPACE.REPLACE_DOMAIN_NAME`
 REPLACE_NAMESPACE: Namespace to deploy in Kubernetes
-REPLACE_ISSUER: keycloak issuer=`https://keycloak.global.stakater.com/auth/realms/stakater`
+REPLACE_ISSUER: keycloak issuer e.g.`https://keycloak.example.domain.com/auth/realms/example-realm`
 REPLACE_SECURITY_REALM: Security Realm XML object
 REPLACE_PROVIDER_CONFIG: Provider config JSON object enclosed in `"`
 REPLACE_CLIENT_ID: Keycloak client ID
