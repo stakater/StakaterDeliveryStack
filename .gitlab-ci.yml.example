@@ -1,0 +1,50 @@
+# pipeline base image
+image:
+  name: stakater/gitlab:0.0.3
+
+# Configuring CI/CD environment variables
+variables:
+
+  # stack configuraton variables
+  BRANCH: "master"
+  TARGET: "install-dry-run"
+  INSTALL_PVC: "false"
+
+  # k8s cluster configuration variables
+  NAMESPACE: "delivery"
+  PROVIDER: "aws"
+
+# configuring pre-requisites required during pipeline execution
+before_script:
+
+  - echo "Displaying non-sensitive config parameters on pipeline logs"
+  - echo $BRANCH
+  - echo $TARGET
+  - echo $INSTALL_PVC
+
+  - echo $NAMESPACE
+  - echo $PROVIDER
+  
+  # Configuring kubernetes cluster access
+  - echo "configuration kubernetes access in pipeline"
+  - mkdir ~/.kube/
+  - echo $KUBE_CONFIG | base64 -d > config
+  - mv config ~/.kube/
+  
+# pipeline stages
+stages:
+  - deploy
+deploy:
+  stage: deploy
+  # pipeline execution script
+  script:
+    
+    - echo "Checkout to the deployment branch"
+    - git checkout $BRANCH
+
+    - echo "Deploying stack on kubernetes cluster"
+    - if [ -z "$NAMESPACE" ]; then \
+    -       make $TARGET PROVIDER_NAME=$PROVIDER INSTALL_PVC=$INSTALL_PVC; \
+    - else \
+    -       make $TARGET NAMESPACE=$NAMESPACE PROVIDER_NAME=$PROVIDER INSTALL_PVC=$INSTALL_PVC; \      
+    - fi
