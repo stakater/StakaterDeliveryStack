@@ -1,0 +1,481 @@
+apiVersion: flux.weave.works/v1beta1
+kind: HelmRelease
+metadata:
+  name: stakater-delivery-nexus
+  namespace: delivery
+spec:
+  releaseName: stakater-delivery-nexus
+  chart:
+    repository: https://kubernetes-charts.storage.googleapis.com
+    name: sonatype-nexus
+    version: 1.18.1
+  values:
+    nameOverride: nexus
+    fullnameOverride: nexus
+    statefulset:
+      enabled: false
+    replicaCount: 1
+    # By default deploymentStrategy is set to rollingUpdate with maxSurge of 25% and maxUnavailable of 25% . you can change type to `Recreate` or can uncomment `rollingUpdate` specification and adjust them to your usage.
+    deploymentStrategy: {}
+      # rollingUpdate:
+      #   maxSurge: 25%
+      #   maxUnavailable: 25%
+      # type: RollingUpdate
+
+    nexus:
+      imageName: quay.io/travelaudience/docker-nexus
+      imageTag: 3.15.2
+      imagePullPolicy: IfNotPresent
+      env:
+        # - name: install4jAddVmParams
+          # value: "-Xms1200M -Xmx1200M -XX:MaxDirectMemorySize=2G -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
+      # nodeSelector:
+      #   cloud.google.com/gke-nodepool: default-pool
+      resources: {}
+        # requests:
+          ## Based on https://support.sonatype.com/hc/en-us/articles/115006448847#mem
+          ## and https://twitter.com/analytically/status/894592422382063616:
+          ##   Xms == Xmx
+          ##   Xmx <= 4G
+          ##   MaxDirectMemory >= 2G
+          ##   Xmx + MaxDirectMemory <= RAM * 2/3 (hence the request for 4800Mi)
+          ##   MaxRAMFraction=1 is not being set as it would allow the heap
+          ##     to use all the available memory.
+          # cpu: 250m
+          # memory: 4800Mi
+      # The ports should only be changed if the nexus image uses a different port
+      dockerPort: 5003
+      nexusPort: 8081
+      service:
+        type: ClusterIP
+      annotations:
+        config.xposer.stakater.com/Domain: REPLACE_DOMAIN_NAME
+        config.xposer.stakater.com/IngressNameTemplate: '{{.Service}}-{{.Namespace}}'
+        config.xposer.stakater.com/IngressURLTemplate: '{{.Service}}.{{.Namespace}}.{{.Domain}}'
+        xposer.stakater.com/annotations: |-
+          kubernetes.io/ingress.class: internal-ingress
+          ingress.kubernetes.io/force-ssl-redirect: true
+          ingress.kubernetes.io/proxy-body-size: 900m
+          forecastle.stakater.com/expose: true
+          forecastle.stakater.com/icon: https://github.com/stakater/ForecastleIcons/raw/master/nexus.png
+          forecastle.stakater.com/appName: Nexus
+          exposeIngressUrl: globally
+      # labels: {}
+      # securityContext:
+      #   fsGroup: 2000
+      livenessProbe:
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        failureThreshold: 6
+        timeoutSeconds: 10
+        path: /
+      readinessProbe:
+        initialDelaySeconds: 30
+        periodSeconds: 30
+        failureThreshold: 6
+        timeoutSeconds: 10
+        path: /
+      # hostAliases allows the modification of the hosts file inside a container
+      hostAliases: []
+      # - ip: "192.168.1.10"
+      #   hostnames:
+      #   - "example.com"
+      #   - "www.example.com"
+
+    nexusProxy:
+      enabled: true
+      svcName: nexus
+      imageName: quay.io/travelaudience/docker-nexus-proxy
+      imageTag: 2.4.0_8u191
+      imagePullPolicy: IfNotPresent
+      port: 80
+      targetPort: 8081
+      labels:
+        expose: "true"
+      env:
+        nexusDockerHost:
+        nexusHttpHost:
+        enforceHttps: false
+        cloudIamAuthEnabled: false
+    ## If cloudIamAuthEnabled is set to true uncomment the variables below and remove this line
+      #   clientId: ""
+      #   clientSecret: ""
+      #   organizationId: ""
+      #   redirectUrl: ""
+      # secrets:
+      #   keystore: ""
+      #   password: ""
+      resources: {}
+        # requests:
+          # cpu: 100m
+          # memory: 256Mi
+        # limits:
+          # cpu: 200m
+          # memory: 512Mi
+    persistence:
+      enabled: true
+      accessMode: ReadWriteOnce
+      ## If defined, storageClass: <storageClass>
+      ## If set to "-", storageClass: "", which disables dynamic provisioning
+      ## If undefined (the default) or set to null, no storageClass spec is
+      ##   set, choosing the default provisioner.  (gp2 on AWS, standard on
+      ##   GKE, AWS & OpenStack)
+      ##
+      existingClaim: stakater-delivery-nexus-data
+      annotations:
+        helm.sh/resource-policy: keep
+      storageClass: "ssd"
+      storageSize: 30Gi
+      # If PersistentDisk already exists you can create a PV for it by including the 2 following keypairs.
+      # pdName: nexus-data-disk
+      # fsType: ext4
+
+    nexusBackup:
+      enabled: false
+      imageName: quay.io/travelaudience/docker-nexus-backup
+      imageTag: 1.3.0
+      imagePullPolicy: IfNotPresent
+      env:
+        targetBucket:
+      nexusAdminPassword: "admin123"
+      persistence:
+        enabled: true
+        # existingClaim:
+        # annotations:
+        #  "helm.sh/resource-policy": keep
+        accessMode: ReadWriteOnce
+        # See comment above for information on setting the backup storageClass
+        # storageClass: "-"
+        storageSize: 8Gi
+        # If PersistentDisk already exists you can create a PV for it by including the 2 following keypairs.
+        # pdName: nexus-backup-disk
+        # fsType: ext4
+
+    ingress:
+      enabled: false
+      path: /
+      annotations: {}
+      # # NOTE: Can't use 'false' due to https://github.com/jetstack/kube-lego/issues/173.
+      # kubernetes.io/ingress.allow-http: true
+      # kubernetes.io/ingress.class: gce
+      # kubernetes.io/ingress.global-static-ip-name: ""
+      # kubernetes.io/tls-acme: true
+      tls:
+        enabled: false
+        secretName: "tls-cert"
+
+    tolerations: {}
+
+    deployment:
+      # # Add annotations in deployment to enhance deployment configurations
+      annotations: {}
+      additionalVolumes:
+        - name: pre-install
+          emptyDir: {}
+      additionalVolumeMounts:
+        - name: pre-install
+          mountPath: "/sonatype-nexus-conf"
+      # # Add init containers. e.g. to be used to give specific permissions for nexus-data.
+      # # Add your own init container or uncomment and modify the given example.
+      initContainers:
+      - name: copy-ro-scripts
+        image: busybox
+        command: ['sh', '-c', 'cp /scripts/* /etc/pre-install/']
+        volumeMounts:
+        - name: nexus-conf
+          mountPath: /scripts
+        - name: pre-install
+          mountPath: /etc/pre-install
+      - name: fmp-volume-permission
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ['chown','-R', '200', '/nexus-data']
+        volumeMounts:
+          - name: nexus-data
+            mountPath: /nexus-data
+      - name: fmp-volume-permission2
+        image: busybox
+        imagePullPolicy: IfNotPresent
+        command: ['chmod','-R', '777', '/sonatype-nexus-conf']
+        volumeMounts:
+          - name: pre-install
+            mountPath: /sonatype-nexus-conf
+      # # Uncomment and modify this to run a command after starting the nexus container.
+      postStart:
+        command: '["/bin/sh", "-c", "/sonatype-nexus-conf/postStart.sh"]'
+
+    # # To use an additional secret, set enable to true and add data
+    secret:      
+      enabled: true
+      mountPath: /etc/secret-volume
+      readOnly: true
+      data:
+        .admin_account.json: REPLACE_ADMIN_ACCOUNT
+        .cluster_account.json: REPLACE_CLUSTER_ACCOUNT
+
+    # # To use an additional service, set enable to true
+    service:
+      enabled: true
+      name: docker
+      portName: docker
+      serviceType: ClusterIP
+      labels:
+        expose: "true"
+      annotations:
+        config.xposer.stakater.com/Domain: REPLACE_DOMAIN_NAME
+        config.xposer.stakater.com/IngressNameTemplate: '{{.Service}}-{{.Namespace}}'
+        config.xposer.stakater.com/IngressURLTemplate: '{{.Service}}.{{.Namespace}}.{{.Domain}}'
+        xposer.stakater.com/annotations: |-
+          kubernetes.io/ingress.class: internal-ingress
+          ingress.kubernetes.io/force-ssl-redirect: true
+          ingress.kubernetes.io/proxy-body-size: 900m
+      targetPort: 5003
+      port: 80
+
+    # # Enable configmap and add data in configmap
+    config:
+      enabled: true
+      mountPath: /sonatype-nexus-temp
+      data:
+        postStart.sh: |
+          #!/usr/bin/env bash
+          HOST=localhost:8081
+
+          # default user setup by Nexus. In the end of this script I will remove all roles from this account
+          USERNAME=admin
+          PASSWORD=admin123
+          
+          apk add --no-cache curl
+
+          # Admin Account details specified in nexus secret .admin_account.json
+          ADMIN_ACCOUNT_USERNAME=stackator-admin
+          # Cluster Account details specified in nexus secret .cluster_account.json
+          CLUSTER_ACCOUNT_USERNAME=stackator-cluster
+
+          echo `pwd`
+          cd /sonatype-nexus-conf/
+
+          REPOS=($(ls | grep json | sed -e 's/\..*$//'))
+
+          until $(curl --output /dev/null --silent --head --fail http://$HOST/); do
+            echo $?
+            printf '.'
+            sleep 5
+          done
+
+          if [ ${#REPOS[@]} -lt 1 ]
+          then
+            echo "Not enough JSON files!"
+            exit 1
+          fi
+
+          echo "uploading secret admin account script"
+          STATUSCODE=$(curl --output /dev/stderr --silent -v -u $USERNAME:$PASSWORD --header "Content-Type: application/json" --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/" -d @/etc/secret-volume/.admin_account.json)
+          if [ $STATUSCODE -eq 403 ]
+          then
+            echo "Already initialized; as we remove rights of the admin user in the end of this script; when it runs first time. So, when container restarts it should work."
+            exit 0
+          elif [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+          then
+              echo "Could not upload secret"
+              exit 1
+          else
+            echo $STATUSCODE
+          fi
+
+          echo "Executing secret admin account script"
+          STATUSCODE=$(curl --output /dev/stderr --silent -v -X POST -u $USERNAME:$PASSWORD --header "Content-Type: text/plain" --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/${ADMIN_ACCOUNT_USERNAME}/run")
+          if [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+          then
+              echo "Could not execute secret"
+              exit 1
+          fi
+
+          echo "Delete secret admin account script"
+          STATUSCODE=$(curl -X "DELETE" --output /dev/stderr --silent -v -u $USERNAME:$PASSWORD  --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/${ADMIN_ACCOUNT_USERNAME}")
+          if [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+          then
+              echo "Could not delete secret"
+              exit 1
+          fi
+
+          echo "Uploading secret cluster account script"
+          STATUSCODE=$(curl --output /dev/stderr --silent -v -u $USERNAME:$PASSWORD --header "Content-Type: application/json" --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/" -d @/etc/secret-volume/.cluster_account.json)
+          if [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+          then
+              echo "Could not upload secret"
+              exit 1
+          fi
+
+          echo "Executing secret cluster account script"
+          STATUSCODE=$(curl --output /dev/stderr --silent -v -X POST -u $USERNAME:$PASSWORD --header "Content-Type: text/plain" --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/${CLUSTER_ACCOUNT_USERNAME}/run")
+          if [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+          then
+              echo "Could not execute secret"
+              exit 1
+          fi
+
+          echo "Deleting secret cluster account script"
+          STATUSCODE=$(curl -X "DELETE" --output /dev/stderr --silent -v -u $USERNAME:$PASSWORD  --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/${CLUSTER_ACCOUNT_USERNAME}")
+          if [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+          then
+              echo "Could not delete secret"
+              exit 1
+          fi
+
+          for i in "${REPOS[@]}"
+          do
+            echo "creating $i repository"
+            STATUSCODE=$(curl --output /dev/stderr --silent -v -u $USERNAME:$PASSWORD --header "Content-Type: application/json" --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/" -d @$i.json)
+            if [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+            then
+                echo "Could not upload $i"
+                exit 1
+            fi
+
+            STATUSCODE=$(curl --output /dev/stderr --silent -v -X POST -u $USERNAME:$PASSWORD --header "Content-Type: text/plain" --write-out "%{http_code}" "http://$HOST/service/rest/v1/script/$i/run")
+            if [ $STATUSCODE -lt 200 ] || [ $STATUSCODE -gt 299 ]
+            then
+                echo "Could not execute $i"
+                exit 1
+            fi
+          done
+
+          exit $?
+
+        rutauth.json: |
+          {
+            "name": "rutauth",
+            "type": "groovy",
+            "content": "import groovy.json.JsonOutput; import org.sonatype.nexus.capability.CapabilityReference; import org.sonatype.nexus.capability.CapabilityType;  import org.sonatype.nexus.internal.capability.DefaultCapabilityReference;import org.sonatype.nexus.internal.capability.DefaultCapabilityRegistry; def capabilityRegistry = container.lookup(DefaultCapabilityRegistry.class.getName()); def capabilityType = CapabilityType.capabilityType('rutauth'); def capabilityProps = ['httpHeader': 'X-AUTH-STAKATER']; def capabilityNotes = 'configured through scripting api'; DefaultCapabilityReference existing = capabilityRegistry.all.find { CapabilityReference capabilityReference -> capabilityReference.context().descriptor().type() == capabilityType }; if (!existing) { capabilityRegistry.add(capabilityType, true, capabilityNotes, capabilityProps).toString(); JsonOutput.toJson([result : 'Successfully added Rut Auth!']) }"
+          }
+
+        eclipselink.json: |
+          {
+            "name": "eclipselink",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('eclipselink', 'http://download.eclipse.org/rt/eclipselink/maven.repo/')"
+          }
+
+        fuse.json: |
+          {
+            "name": "fuse",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('fuse', 'https://repository.jboss.org/nexus/content/repositories/fs-releases/')"
+          }
+
+        fuse-ea.json: |
+          {
+            "name": "fuse-ea",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('fuse-ea', 'https://repo.fusesource.com/nexus/content/groups/ea/')"
+          }
+
+        jboss.json: |
+          {
+            "name": "jboss",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('jboss', 'https://repository.jboss.org/nexus/content/groups/public/')"
+          }
+
+        jboss-http: |
+          {
+            "name": "jboss-http",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('jboss-http', 'http://repository.jboss.org/nexus/content/groups/public/')"
+          }
+
+        jcenter.json: |
+          {
+            "name": "jcenter",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('jcenter', 'http://jcenter.bintray.com/')"
+          }
+
+        jenkins-ci.json: |
+          {
+            "name": "jenkins-ci",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('jenkins-ci', 'http://repo.jenkins-ci.org/public/')"
+          }
+
+        npm-internal.json: |
+          {
+            "name": "npm-internal",
+            "type": "groovy",
+            "content": "repository.createNpmHosted('npm-internal')"
+          }
+
+        npmjs.json: |
+          {
+            "name": "npmjs",
+            "type": "groovy",
+            "content": "repository.createNpmProxy('npmjs', 'https://registry.npmjs.org')"
+          }
+
+        servicemix.json: |
+          {
+            "name": "servicemix",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('servicemix', 'http://svn.apache.org/repos/asf/servicemix/m2-repo/')"
+          }
+
+        sonatype-snapshots.json: |
+          {
+            "name": "sonatype-snapshots",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('sonatype-snapshots', 'https://oss.sonatype.org/content/repositories/snapshots/')"
+          }
+
+        sonatype-staging.json: |
+          {
+            "name": "sonatype-staging",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('sonatype-staging', 'https://oss.sonatype.org/content/repositories/staging/')"
+          }
+
+        spring-milestone.json: |
+          {
+            "name": "spring-milestone",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('spring-milestone', 'http://repo.spring.io/milestone/')"
+          }
+
+        spring-release.json: |
+          {
+            "name": "spring-release",
+            "type": "groovy",
+            "content": "repository.createMavenProxy('spring-release', 'http://repo.spring.io/release/')"
+          }
+
+        zzz_npm-all.json: |
+          {
+            "name": "zzz_npm-all",
+            "type": "groovy",
+            "content": "repository.createNpmGroup('npm-all', ['npmjs','npm-internal'])"
+          }
+
+        zzz_public.json: |
+          {
+            "name": "zzz_public",
+            "type": "groovy",
+            "content": "repository.createMavenGroup('public', ['fuse','jboss','jenkins-ci','maven-central','maven-public','maven-releases','maven-snapshots','sonatype-snapshots','sonatype-staging'])"
+          }
+        stackator-docker.json: |
+          {
+            "name": "stackator-docker",
+            "type": "groovy",
+            "content": "repository.createDockerHosted('stackator-docker', 5003, null, 'default', false, true, org.sonatype.nexus.repository.storage.WritePolicy.ALLOW)"
+          }
+        remove-anonymous-configuration.json: |
+          {
+            "name": "remove-anonymous-configuration",
+            "type": "groovy",
+            "content": "security.setAnonymousAccess(false)"
+          }
+        zzzz-remove-default.json: |
+          {
+            "name": "zzzz-remove-default",
+            "type": "groovy",
+            "content": "security.setUserRoles('admin', [])"
+          }
