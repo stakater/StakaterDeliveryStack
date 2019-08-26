@@ -44,7 +44,7 @@ These environment variables can be configured either by changing the variable va
 
 * Once pre-requisites are completed, create a new project on Gitlab using the following [guide](https://playbook.stakater.com/content/processes/bootstrapping/github-integration-with-gitlab-pipeline.html#overview)
 
-
+* Once project is created, pipeline will execute automatically.
 
 ## Variables to replace
 
